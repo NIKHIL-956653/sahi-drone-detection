@@ -1,0 +1,8 @@
+sahi
+ultralytics
+opencv-python
+pillow
+fastapi
+uvicorn
+python-multipart
+numpy
