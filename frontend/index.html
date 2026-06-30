@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAHI DRONE DETECTION</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Courier New', monospace;
+    background: #05080f;
+    color: #00d9ff;
+    min-height: 100vh;
+    padding: 30px 20px;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(0,120,255,0.08), transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(0,255,200,0.06), transparent 40%);
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 1px solid #14304a;
+    padding-bottom: 20px;
+  }
+  .header h1 {
+    font-size: 32px;
+    letter-spacing: 6px;
+    color: #00d9ff;
+    text-shadow: 0 0 20px #00d9ff66;
+  }
+  .header p {
+    color: #4a7a9c;
+    font-size: 12px;
+    letter-spacing: 3px;
+    margin-top: 6px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  .upload-zone {
+    border: 2px dashed #14304a;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    margin-bottom: 24px;
+    transition: all 0.3s;
+    cursor: pointer;
+    background: #0a1020;
+  }
+  .upload-zone:hover { border-color: #00d9ff; box-shadow: 0 0 30px #00d9ff22; }
+  .upload-zone.dragover { border-color: #00ff9c; background: #0a2018; }
+  .upload-zone input { display: none; }
+  .upload-label { cursor: pointer; }
+  .upload-label .icon { font-size: 48px; }
+  .upload-label .text { color: #4a7a9c; margin-top: 12px; letter-spacing: 2px; }
+  .btn {
+    background: #00d9ff;
+    color: #05080f;
+    border: none;
+    padding: 14px 40px;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 14px;
+    letter-spacing: 3px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 20px auto;
+    display: block;
+    transition: all 0.2s;
+  }
+  .btn:hover { box-shadow: 0 0 25px #00d9ff88; transform: translateY(-2px); }
+  .btn:disabled { background: #14304a; color: #4a7a9c; cursor: not-allowed; }
+  .stats-bar {
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    background: #0a1020;
+    border: 1px solid #14304a;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+  }
+  .stat-label { color: #4a7a9c; font-size: 11px; letter-spacing: 2px; }
+  .stat-value { font-size: 36px; font-weight: bold; margin-top: 8px; }
+  .normal-color { color: #ff4d6d; }
+  .sahi-color { color: #00ff9c; }
+  .improve-color { color: #ffb300; }
+  .results {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .result-panel {
+    background: #0a1020;
+    border: 1px solid #14304a;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .result-panel h3 {
+    text-align: center;
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+    font-size: 16px;
+  }
+  .result-panel img { width: 100%; border-radius: 8px; }
+  .loading {
+    display: none;
+    text-align: center;
+    padding: 40px;
+    color: #00d9ff;
+    letter-spacing: 3px;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .footer {
+    text-align: center;
+    color: #2a4a5c;
+    font-size: 11px;
+    margin-top: 40px;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>⬢ SAHI DRONE DETECTION</h1>
+    <p>SLICING AIDED HYPER INFERENCE // SMALL OBJECT DETECTION</p>
+  </div>
+
+  <div class="upload-zone" id="uploadZone">
+    <label class="upload-label" for="fileInput">
+      <div class="icon">🛰️</div>
+      <div class="text">DROP AERIAL IMAGE OR CLICK TO UPLOAD</div>
+    </label>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <button class="btn" id="detectBtn" disabled>⬢ RUN DETECTION</button>
+
+  <div class="loading" id="loading">⬢ SLICING IMAGE // RUNNING INFERENCE // MERGING DETECTIONS...</div>
+
+  <div class="stats-bar" id="statsBar">
+    <div class="stat">
+      <div class="stat-label">NORMAL YOLO</div>
+      <div class="stat-value normal-color" id="normalCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">SAHI SLICED</div>
+      <div class="stat-value sahi-color" id="sahiCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">IMPROVEMENT</div>
+      <div class="stat-value improve-color" id="improveCount">+0%</div>
+    </div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="result-panel">
+      <h3 class="normal-color">⬢ NORMAL INFERENCE</h3>
+      <img id="normalImg" src="" alt="">
+    </div>
+    <div class="result-panel">
+      <h3 class="sahi-color">⬢ SAHI SLICED INFERENCE</h3>
+      <img id="sahiImg" src="" alt="">
+    </div>
+  </div>
+
+  <div class="footer">
+    POWERED BY SAHI + YOLOv8 // FASTAPI BACKEND
+  </div>
+
+</div>
+
+<script>
+const API = "http://localhost:8000";
+let selectedFile = null;
+
+const fileInput = document.getElementById("fileInput");
+const uploadZone = document.getElementById("uploadZone");
+const detectBtn = document.getElementById("detectBtn");
+
+fileInput.addEventListener("change", (e) => {
+  selectedFile = e.target.files[0];
+  if (selectedFile) {
+    document.querySelector(".upload-label .text").textContent =
+      "✅ " + selectedFile.name.toUpperCase();
+    detectBtn.disabled = false;
+  }
+});
+
+// Drag and drop
+uploadZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  uploadZone.classList.add("dragover");
+});
+uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+uploadZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove("dragover");
+  selectedFile = e.dataTransfer.files[0];
+  if (selectedFile) {
+    document.querySelector(".upload-label .text").textContent =
+      "✅ " + selectedFile.name.toUpperCase();
+    detectBtn.disabled = false;
+  }
+});
+
+detectBtn.addEventListener("click", async () => {
+  if (!selectedFile) return;
+
+  document.getElementById("loading").style.display = "block";
+  document.getElementById("statsBar").style.display = "none";
+  document.getElementById("results").style.display = "none";
+  detectBtn.disabled = true;
+
+  const formData = new FormData();
+  formData.append("file", selectedFile);
+
+  try {
+    const res = await fetch(`${API}/detect`, { method: "POST", body: formData });
+    const data = await res.json();
+
+    document.getElementById("normalCount").textContent = data.normal.count;
+    document.getElementById("sahiCount").textContent = data.sahi.count;
+    document.getElementById("improveCount").textContent = "+" + data.improvement.percent + "%";
+
+    document.getElementById("normalImg").src = "data:image/jpeg;base64," + data.normal.image;
+    document.getElementById("sahiImg").src = "data:image/jpeg;base64," + data.sahi.image;
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("statsBar").style.display = "grid";
+    document.getElementById("results").style.display = "grid";
+  } catch (err) {
+    document.getElementById("loading").textContent = "❌ ERROR: " + err.message + " — Is the API running?";
+  }
+  detectBtn.disabled = false;
+});
+</script>
+</body>
+</html>
