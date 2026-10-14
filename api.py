@@ -15,11 +15,11 @@ import os
 import threading
 import time
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict, deque
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -36,6 +36,32 @@ app.add_middleware(
 )
 
 MAX_UPLOAD_MB = 25
+
+# ── Auth + rate limiting ─────────────────────────────────────
+# Set SAHI_API_KEYS=key1,key2 to enable auth. Unset = open (dev mode).
+API_KEYS = {k.strip() for k in os.environ.get("SAHI_API_KEYS", "").split(",") if k.strip()}
+RATE_LIMIT = int(os.environ.get("SAHI_RATE_LIMIT", "10"))  # req/min per key
+
+_request_log = defaultdict(deque)
+_rate_lock = threading.Lock()
+
+
+def require_api_key(x_api_key: str = Header(None)):
+    if not API_KEYS:
+        return "anonymous"
+    if x_api_key not in API_KEYS:
+        raise HTTPException(401, "Invalid or missing API key (X-API-Key header)")
+    now = time.time()
+    with _rate_lock:
+        q = _request_log[x_api_key]
+        while q and now - q[0] > 60:
+            q.popleft()
+        if len(q) >= RATE_LIMIT:
+            raise HTTPException(429, f"Rate limit exceeded ({RATE_LIMIT} req/min)")
+        q.append(now)
+    return x_api_key
+
+
 DEVICE = os.environ.get("SAHI_DEVICE", "cpu")  # set SAHI_DEVICE=cuda:0 for GPU
 
 # Load model once at startup
@@ -119,6 +145,7 @@ async def detect(
     slice_size: int = Form(512),
     overlap: float = Form(0.2),
     confidence: float = Form(0.3),
+    api_key: str = Depends(require_api_key),
 ):
     # ── Validate params ──────────────────────────────────────
     if not 128 <= slice_size <= 2048:
