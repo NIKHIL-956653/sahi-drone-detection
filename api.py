@@ -12,6 +12,7 @@ v2 additions:
 """
 import base64
 import os
+import threading
 import time
 import uuid
 from collections import Counter
@@ -19,6 +20,7 @@ from collections import Counter
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sahi import AutoDetectionModel
@@ -45,6 +47,28 @@ model = AutoDetectionModel.from_pretrained(
     device=DEVICE,
 )
 print("Model ready!")
+
+model_lock = threading.Lock()
+
+
+def run_inference(temp_path, slice_size, overlap, confidence):
+    """Runs in a worker thread. Lock serializes model access —
+    confidence mutation + inference are atomic per request."""
+    with model_lock:
+        model.confidence_threshold = confidence
+        t1 = time.time()
+        normal = get_prediction(temp_path, model).object_prediction_list
+        normal_time = (time.time() - t1) * 1000
+
+        t2 = time.time()
+        sahi = get_sliced_prediction(
+            temp_path, model,
+            slice_height=slice_size, slice_width=slice_size,
+            overlap_height_ratio=overlap, overlap_width_ratio=overlap,
+            verbose=0,
+        ).object_prediction_list
+        sahi_time = (time.time() - t2) * 1000
+    return normal, normal_time, sahi, sahi_time
 
 
 def draw_boxes(img, detections, color, label):
@@ -118,20 +142,10 @@ async def detect(
     temp_path = os.path.join("temp", f"{uuid.uuid4().hex}.jpg")
     cv2.imwrite(temp_path, img)
 
-    model.confidence_threshold = confidence
     try:
-        t1 = time.time()
-        normal = get_prediction(temp_path, model).object_prediction_list
-        normal_time = (time.time() - t1) * 1000
-
-        t2 = time.time()
-        sahi = get_sliced_prediction(
-            temp_path, model,
-            slice_height=slice_size, slice_width=slice_size,
-            overlap_height_ratio=overlap, overlap_width_ratio=overlap,
-            verbose=0,
-        ).object_prediction_list
-        sahi_time = (time.time() - t2) * 1000
+        normal, normal_time, sahi, sahi_time = await run_in_threadpool(
+            run_inference, temp_path, slice_size, overlap, confidence
+        )
     finally:
         try:
             os.remove(temp_path)
