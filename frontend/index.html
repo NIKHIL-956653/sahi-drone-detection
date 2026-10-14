@@ -51,6 +51,57 @@
   .upload-label { cursor: pointer; }
   .upload-label .icon { font-size: 48px; }
   .upload-label .text { color: #4a7a9c; margin-top: 12px; letter-spacing: 2px; }
+
+  /* ── Parameter controls ── */
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .control {
+    background: #0a1020;
+    border: 1px solid #14304a;
+    border-radius: 10px;
+    padding: 16px 20px;
+  }
+  .control-label {
+    display: flex;
+    justify-content: space-between;
+    color: #4a7a9c;
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+  .control-label .val { color: #00d9ff; font-weight: bold; font-size: 13px; }
+  input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: #14304a;
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #00d9ff;
+    cursor: pointer;
+    box-shadow: 0 0 10px #00d9ff88;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #00d9ff;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 0 10px #00d9ff88;
+  }
+  .control-hint { color: #2a4a5c; font-size: 10px; margin-top: 8px; letter-spacing: 1px; }
+
   .btn {
     background: #00d9ff;
     color: #05080f;
@@ -83,6 +134,7 @@
   }
   .stat-label { color: #4a7a9c; font-size: 11px; letter-spacing: 2px; }
   .stat-value { font-size: 36px; font-weight: bold; margin-top: 8px; }
+  .stat-sub { color: #2a4a5c; font-size: 11px; margin-top: 6px; letter-spacing: 1px; }
   .normal-color { color: #ff4d6d; }
   .sahi-color { color: #00ff9c; }
   .improve-color { color: #ffb300; }
@@ -103,7 +155,27 @@
     margin-bottom: 12px;
     font-size: 16px;
   }
-  .result-panel img { width: 100%; border-radius: 8px; }
+  .result-panel img { width: 100%; border-radius: 8px; cursor: zoom-in; }
+
+  /* ── Per-class breakdown ── */
+  .class-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: center;
+  }
+  .chip {
+    border: 1px solid #14304a;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: #4a7a9c;
+    background: #05080f;
+  }
+  .chip b { color: #00d9ff; }
+
   .loading {
     display: none;
     text-align: center;
@@ -113,12 +185,29 @@
     animation: pulse 1.5s infinite;
   }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ── Lightbox zoom ── */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 100;
+    cursor: zoom-out;
+    overflow: auto;
+    padding: 20px;
+  }
+  .lightbox img { max-width: none; width: 95vw; display: block; margin: 0 auto; }
+
   .footer {
     text-align: center;
     color: #2a4a5c;
     font-size: 11px;
     margin-top: 40px;
     letter-spacing: 2px;
+  }
+  @media (max-width: 800px) {
+    .controls, .stats-bar, .results { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -138,6 +227,30 @@
     <input type="file" id="fileInput" accept="image/*">
   </div>
 
+  <div class="controls">
+    <div class="control">
+      <div class="control-label">
+        <span>SLICE SIZE</span><span class="val" id="sliceVal">512 px</span>
+      </div>
+      <input type="range" id="sliceSize" min="256" max="1024" step="128" value="512">
+      <div class="control-hint">SMALLER = BETTER TINY OBJECTS, SLOWER</div>
+    </div>
+    <div class="control">
+      <div class="control-label">
+        <span>TILE OVERLAP</span><span class="val" id="overlapVal">20%</span>
+      </div>
+      <input type="range" id="overlap" min="0" max="40" step="5" value="20">
+      <div class="control-hint">HIGHER = FEWER CUT-OFF OBJECTS AT TILE EDGES</div>
+    </div>
+    <div class="control">
+      <div class="control-label">
+        <span>CONFIDENCE</span><span class="val" id="confVal">0.30</span>
+      </div>
+      <input type="range" id="confidence" min="10" max="90" step="5" value="30">
+      <div class="control-hint">MINIMUM DETECTION CONFIDENCE THRESHOLD</div>
+    </div>
+  </div>
+
   <button class="btn" id="detectBtn" disabled>⬢ RUN DETECTION</button>
 
   <div class="loading" id="loading">⬢ SLICING IMAGE // RUNNING INFERENCE // MERGING DETECTIONS...</div>
@@ -146,25 +259,30 @@
     <div class="stat">
       <div class="stat-label">NORMAL YOLO</div>
       <div class="stat-value normal-color" id="normalCount">0</div>
+      <div class="stat-sub" id="normalTime"></div>
     </div>
     <div class="stat">
       <div class="stat-label">SAHI SLICED</div>
       <div class="stat-value sahi-color" id="sahiCount">0</div>
+      <div class="stat-sub" id="sahiTime"></div>
     </div>
     <div class="stat">
       <div class="stat-label">IMPROVEMENT</div>
       <div class="stat-value improve-color" id="improveCount">+0%</div>
+      <div class="stat-sub" id="improveSub"></div>
     </div>
   </div>
 
   <div class="results" id="results">
     <div class="result-panel">
       <h3 class="normal-color">⬢ NORMAL INFERENCE</h3>
-      <img id="normalImg" src="" alt="">
+      <img id="normalImg" src="" alt="" title="Click to zoom">
+      <div class="class-chips" id="normalChips"></div>
     </div>
     <div class="result-panel">
       <h3 class="sahi-color">⬢ SAHI SLICED INFERENCE</h3>
-      <img id="sahiImg" src="" alt="">
+      <img id="sahiImg" src="" alt="" title="Click to zoom">
+      <div class="class-chips" id="sahiChips"></div>
     </div>
   </div>
 
@@ -174,6 +292,8 @@
 
 </div>
 
+<div class="lightbox" id="lightbox"><img id="lightboxImg" src="" alt=""></div>
+
 <script>
 const API = "http://localhost:8000";
 let selectedFile = null;
@@ -182,14 +302,27 @@ const fileInput = document.getElementById("fileInput");
 const uploadZone = document.getElementById("uploadZone");
 const detectBtn = document.getElementById("detectBtn");
 
-fileInput.addEventListener("change", (e) => {
-  selectedFile = e.target.files[0];
+// ── Slider readouts ──
+const sliceSize = document.getElementById("sliceSize");
+const overlap = document.getElementById("overlap");
+const confidence = document.getElementById("confidence");
+sliceSize.addEventListener("input", () =>
+  document.getElementById("sliceVal").textContent = sliceSize.value + " px");
+overlap.addEventListener("input", () =>
+  document.getElementById("overlapVal").textContent = overlap.value + "%");
+confidence.addEventListener("input", () =>
+  document.getElementById("confVal").textContent = (confidence.value / 100).toFixed(2));
+
+function setFile(file) {
+  selectedFile = file;
   if (selectedFile) {
     document.querySelector(".upload-label .text").textContent =
       "✅ " + selectedFile.name.toUpperCase();
     detectBtn.disabled = false;
   }
-});
+}
+
+fileInput.addEventListener("change", (e) => setFile(e.target.files[0]));
 
 // Drag and drop
 uploadZone.addEventListener("dragover", (e) => {
@@ -200,41 +333,79 @@ uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag
 uploadZone.addEventListener("drop", (e) => {
   e.preventDefault();
   uploadZone.classList.remove("dragover");
-  selectedFile = e.dataTransfer.files[0];
-  if (selectedFile) {
-    document.querySelector(".upload-label .text").textContent =
-      "✅ " + selectedFile.name.toUpperCase();
-    detectBtn.disabled = false;
-  }
+  setFile(e.dataTransfer.files[0]);
 });
+
+function renderChips(el, byClass) {
+  el.innerHTML = "";
+  const entries = Object.entries(byClass || {});
+  if (!entries.length) {
+    el.innerHTML = '<span class="chip">NO OBJECTS</span>';
+    return;
+  }
+  for (const [cls, count] of entries) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `${cls.toUpperCase()} <b>×${count}</b>`;
+    el.appendChild(chip);
+  }
+}
+
+// ── Lightbox zoom ──
+const lightbox = document.getElementById("lightbox");
+const lightboxImg = document.getElementById("lightboxImg");
+for (const id of ["normalImg", "sahiImg"]) {
+  document.getElementById(id).addEventListener("click", (e) => {
+    if (!e.target.src) return;
+    lightboxImg.src = e.target.src;
+    lightbox.style.display = "block";
+  });
+}
+lightbox.addEventListener("click", () => lightbox.style.display = "none");
 
 detectBtn.addEventListener("click", async () => {
   if (!selectedFile) return;
 
-  document.getElementById("loading").style.display = "block";
+  const loading = document.getElementById("loading");
+  loading.textContent = "⬢ SLICING IMAGE // RUNNING INFERENCE // MERGING DETECTIONS...";
+  loading.style.display = "block";
   document.getElementById("statsBar").style.display = "none";
   document.getElementById("results").style.display = "none";
   detectBtn.disabled = true;
 
   const formData = new FormData();
   formData.append("file", selectedFile);
+  formData.append("slice_size", sliceSize.value);
+  formData.append("overlap", (overlap.value / 100).toString());
+  formData.append("confidence", (confidence.value / 100).toString());
 
   try {
     const res = await fetch(`${API}/detect`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     const data = await res.json();
 
     document.getElementById("normalCount").textContent = data.normal.count;
     document.getElementById("sahiCount").textContent = data.sahi.count;
     document.getElementById("improveCount").textContent = "+" + data.improvement.percent + "%";
+    document.getElementById("normalTime").textContent = data.normal.time_ms + " MS";
+    document.getElementById("sahiTime").textContent = data.sahi.time_ms + " MS";
+    document.getElementById("improveSub").textContent =
+      "+" + data.improvement.extra_objects + " EXTRA OBJECTS";
 
     document.getElementById("normalImg").src = "data:image/jpeg;base64," + data.normal.image;
     document.getElementById("sahiImg").src = "data:image/jpeg;base64," + data.sahi.image;
 
-    document.getElementById("loading").style.display = "none";
+    renderChips(document.getElementById("normalChips"), data.normal.by_class);
+    renderChips(document.getElementById("sahiChips"), data.sahi.by_class);
+
+    loading.style.display = "none";
     document.getElementById("statsBar").style.display = "grid";
     document.getElementById("results").style.display = "grid";
   } catch (err) {
-    document.getElementById("loading").textContent = "❌ ERROR: " + err.message + " — Is the API running?";
+    loading.textContent = "❌ ERROR: " + err.message + " — Is the API running?";
   }
   detectBtn.disabled = false;
 });
